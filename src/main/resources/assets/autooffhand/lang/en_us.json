@@ -1,0 +1,16 @@
+{
+  "key.autooffhand.open_config_gui": "Open Auto Offhand Config",
+  "key.categories.autooffhand": "Auto Offhand",
+  "gui.autooffhand.config_item_list.title_player": "Auto Offhand Config (Player)",
+  "gui.autooffhand.config_item_list.title_server": "Auto Offhand Config (Server)",
+  "gui.autooffhand.any_variant_tooltip": "Matches Any %s",
+  "gui.autooffhand.add_button": "Add",
+  "gui.autooffhand.search_box_narrate": "Search Item ID",
+  "commands.autooffhand.serverconfig.success": "Opening server-wide Auto Offhand config...",
+  "commands.autooffhand.toggle.success.server": "Auto Offhand will now use the server's configuration.",
+  "commands.autooffhand.toggle.success.player": "Auto Offhand will now use your personal configuration.",
+  "commands.autooffhand.fail.not_player": "This command can only be run by a player.",
+  "commands.autooffhand.success.player_updated": "Player Auto Offhand config updated.",
+  "commands.autooffhand.success.server_updated": "Server-wide Auto Offhand config updated.",
+  "commands.autooffhand.fail.permission": "You do not have permission to modify the server config."
+}

@@ -1,0 +1,1 @@
+zip -r "AutoOffhand-v0.0.1.zip"   src/main/java/com/thunderscore/ build/libs/
