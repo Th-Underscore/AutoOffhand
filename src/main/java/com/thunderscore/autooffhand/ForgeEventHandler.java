@@ -13,20 +13,21 @@ import com.thunderscore.autooffhand.config.ModConfig;
 import com.thunderscore.autooffhand.network.NetworkHandler;
 import com.thunderscore.autooffhand.network.SyncConfigPacket;
 
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.item.ItemEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.entity.projectile.TridentEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.network.NetworkManager;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.Hand;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.server.TickTask;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.ThrownTrident;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
 import net.minecraftforge.event.entity.EntityLeaveWorldEvent;
@@ -36,7 +37,7 @@ import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.network.PacketDistributor;
+import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
 
 // Dedicated top-level class for Forge event handlers
@@ -56,11 +57,11 @@ public class ForgeEventHandler {
     public static void onCommonSetup(FMLCommonSetupEvent event) {
         event.enqueueWork(() -> { // Use enqueueWork for registry access safety
             RETURNABLE_PROJECTILE_TYPES.add(EntityType.TRIDENT);
-            AutoOffhand.LOGGER.debug("Added {} to returnable projectile types.", EntityType.TRIDENT.getRegistryName());
+            AutoOffhand.LOGGER.debug("Added TRIDENT to returnable projectile types.");
 
             // Check if Tetra mod is loaded
             if (ModList.get().isLoaded("tetra")) {
-                EntityType<?> tetraItemType = ForgeRegistries.ENTITIES.getValue(TETRA_THROWN_MODULAR_ITEM_ID);
+                EntityType<?> tetraItemType = ForgeRegistries.ENTITIES.getValue(TETRA_THROWN_MODULAR_ITEM_ID); // Use ENTITIES registry
                 if (tetraItemType != null && tetraItemType != EntityType.PIG) { // Check it's not the default fallback
                     RETURNABLE_PROJECTILE_TYPES.add(tetraItemType);
                     AutoOffhand.LOGGER.info("Tetra mod detected. Added {} to returnable projectile types.", TETRA_THROWN_MODULAR_ITEM_ID);
@@ -81,12 +82,9 @@ public class ForgeEventHandler {
      */
     @SubscribeEvent
     public static void onAttachCapabilitiesPlayer(AttachCapabilitiesEvent<Entity> event) {
-        if (event.getObject() instanceof PlayerEntity) {
+        if (event.getObject() instanceof Player) {
             PlayerConfigProvider provider = new PlayerConfigProvider();
             event.addCapability(PLAYER_CONFIG_CAP_ID, provider);
-            // Optional: Add listener for invalidation if needed, though usually handled by Forge
-            // event.addListener(provider::invalidate);
-            // AutoOffhand.LOGGER.debug("Attached PlayerConfig capability to player: {}", event.getObject().getName().getString()); // Removed: Name might be null here
         }
     }
 
@@ -97,8 +95,8 @@ public class ForgeEventHandler {
     public static void onPlayerClone(PlayerEvent.Clone event) {
         // Only copy data if the player is actually respawning (not first join)
         if (event.isWasDeath()) {
-            PlayerEntity originalPlayer = event.getOriginal();
-            PlayerEntity newPlayer = event.getPlayer();
+            Player originalPlayer = event.getOriginal();
+            Player newPlayer = event.getPlayer();
 
             // Get capability from original and new player, then copy data
             originalPlayer.getCapability(PlayerConfigCapability.PLAYER_CONFIG_CAPABILITY).ifPresent(oldCap -> {
@@ -116,16 +114,16 @@ public class ForgeEventHandler {
      */
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
-        PlayerEntity player = event.getPlayer();
-        if (player instanceof ServerPlayerEntity) {
-            ServerPlayerEntity serverPlayer = (ServerPlayerEntity) player;
+        Player player = event.getPlayer();
+        if (player instanceof ServerPlayer) {
+            ServerPlayer serverPlayer = (ServerPlayer) player;
             LazyOptional<IPlayerConfig> capOpt = serverPlayer.getCapability(PlayerConfigCapability.PLAYER_CONFIG_CAPABILITY);
 
-            // Get the NetworkManager
-            NetworkManager networkManager = serverPlayer.connection.connection;
+            // Get the Connection (previously NetworkManager)
+            Connection connection = serverPlayer.connection.connection;
 
             // Check if the client has the mod's channel registered using SimpleChannel#isRemotePresent
-            boolean clientHasMod = NetworkHandler.INSTANCE.isRemotePresent(networkManager);
+            boolean clientHasMod = NetworkHandler.INSTANCE.isRemotePresent(connection); // Pass Connection object
 
             if (clientHasMod) {
                 AutoOffhand.LOGGER.debug("Player {} logged in with AutoOffhand mod installed.", serverPlayer.getName().getString());
@@ -154,9 +152,9 @@ public class ForgeEventHandler {
      */
     @SubscribeEvent
     public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
-        PlayerEntity player = event.getPlayer();
-        if (player instanceof ServerPlayerEntity) {
-            ServerPlayerEntity serverPlayer = (ServerPlayerEntity) player;
+        Player player = event.getPlayer();
+        if (player instanceof ServerPlayer) {
+            ServerPlayer serverPlayer = (ServerPlayer) player;
             // Get capability data and send it via packet
             serverPlayer.getCapability(PlayerConfigCapability.PLAYER_CONFIG_CAPABILITY).ifPresent(cap -> {
                 List<String> playerList = cap.getConfigList(); // Get the actual list
@@ -172,77 +170,67 @@ public class ForgeEventHandler {
     // Add HIGHEST priority to the event subscription
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerPickupItem(EntityItemPickupEvent event) {
-        PlayerEntity player = event.getPlayer();
+        Player player = event.getPlayer();
         // --- Ensure this only runs on the logical server (integrated or dedicated) ---
-        if (player.level.isClientSide) {
+        if (player.getLevel().isClientSide()) {
             return;
         }
-        // --- Log only when running server-side ---
         AutoOffhand.LOGGER.debug("Server-Side EntityItemPickupEvent fired for player: {}, item: {}", player.getName().getString(), event.getItem().getItem());
         ItemEntity itemEntity = event.getItem();
         ItemStack pickedUpStack = itemEntity.getItem();
 
-        // Check if the item should be moved based on config, passing the player
-        if (shouldMoveToOffhand(player, pickedUpStack)) { // Pass player
-            ItemStack offhandStack = player.getItemInHand(Hand.OFF_HAND);
+        if (shouldMoveToOffhand(player, pickedUpStack)) {
+            ItemStack offhandStack = player.getItemInHand(InteractionHand.OFF_HAND);
 
-            // Check if offhand is empty
             if (offhandStack.isEmpty()) {
-                AutoOffhand.LOGGER.debug("test"); // Use static logger
-                AutoOffhand.LOGGER.warn("test"); // Use static logger
-                // Move the picked up item to the offhand
-                player.setItemInHand(Hand.OFF_HAND, pickedUpStack.copy()); // Use copy to avoid modifying original stack reference
+                player.setItemInHand(InteractionHand.OFF_HAND, pickedUpStack.copy());
                 pickedUpStack.setCount(0); // Remove the item from the pickup event stack
 
-                // Prevent the item from going into the main inventory and remove the entity
                 event.setCanceled(true);
-                // Check if the item entity still exists before removing
-                if (!itemEntity.removed) {
-                    itemEntity.remove(); // Remove the item entity from the world
+                if (!itemEntity.isRemoved()) {
+                    itemEntity.discard();
                 }
-
-                AutoOffhand.LOGGER.debug("Moved {} to offhand for player: {}", pickedUpStack.getItem().getRegistryName(), player.getName().getString()); // Use static logger
+                AutoOffhand.LOGGER.debug("Moved item to offhand for player: {}", player.getName().getString());
             }
-            // Optional: Add logic here if the offhand is not empty but you want to replace it (e.g., prioritize certain items)
+            // TODO: Add logic here for if the offhand is not empty but you want to replace it (i.e., prioritize certain items)
         }
     }
 
     // Helper method to check if an item matches configured criteria for a specific player
-    // Now accepts PlayerEntity to check capabilities
-    private static boolean shouldMoveToOffhand(PlayerEntity player, ItemStack stack) {
+    // Now accepts Player to check capabilities
+    private static boolean shouldMoveToOffhand(Player player, ItemStack stack) {
         if (stack.isEmpty()) {
             return false;
         }
 
-        ResourceLocation registryName = stack.getItem().getRegistryName();
-        // Items without registry names shouldn't exist in normal gameplay, but check anyway
+        // --- Get Item Registry Name ---
+        ResourceLocation registryName = ForgeRegistries.ITEMS.getKey(stack.getItem());
         if (registryName == null) {
-            AutoOffhand.LOGGER.warn("Item picked up without a registry name: {}", stack); // Use static logger
-            return false;
+                AutoOffhand.LOGGER.warn("Item picked up without a registry name: {}", stack);
+                return false;
         }
+        // ---
 
-        // --- BEGIN ADDED DEBUG LOGGING ---
-        AutoOffhand.LOGGER.debug("Checking if item should move to offhand: {}", stack); // Use static logger
-        AutoOffhand.LOGGER.debug("  Item Registry Name: {}", registryName); // Use static logger
-        AutoOffhand.LOGGER.debug("  Item Display Name: {}", stack.getDisplayName().getString()); // Use static logger
-        AutoOffhand.LOGGER.debug("  Item NBT: {}", stack.getTag()); // Log NBT // Use static logger
+        // --- DEBUG LOGGING ---
+        AutoOffhand.LOGGER.debug("Checking if item should move to offhand: {}", stack);
+        AutoOffhand.LOGGER.debug("  Item Registry Name: {}", registryName);
+        AutoOffhand.LOGGER.debug("  Item Display Name: {}", stack.getDisplayName().getString());
+        AutoOffhand.LOGGER.debug("  Item NBT: {}", stack.getTag());
 
         // --- Determine which config list to use ---
         List<String> effectiveConfigEntries = null;
         boolean useServerList = true; // Default to server list
 
-        // Attempt to get the player's capability
         LazyOptional<IPlayerConfig> playerCapOpt = player.getCapability(PlayerConfigCapability.PLAYER_CONFIG_CAPABILITY);
 
         if (playerCapOpt.isPresent()) {
             IPlayerConfig playerConfig = playerCapOpt.orElseThrow(() -> new IllegalStateException("Capability present but could not be retrieved"));
-            // Check the player's preference flag
             if (playerConfig.isUsingServerConfig()) {
                 useServerList = true;
                 AutoOffhand.LOGGER.debug("  Player capability found. Player prefers server config.");
             } else {
                 // Player prefers their own config, get it
-                effectiveConfigEntries = playerConfig.getConfigList(); // Get the player's list (returns a copy)
+                effectiveConfigEntries = playerConfig.getConfigList();
                 useServerList = false;
                 AutoOffhand.LOGGER.debug("  Player capability found. Using player-specific list ({} entries).", effectiveConfigEntries.size());
             }
@@ -252,14 +240,12 @@ public class ForgeEventHandler {
             useServerList = true;
         }
 
-        // If we determined we need the server list (either by preference or fallback)
         if (useServerList) {
             AutoOffhand.LOGGER.debug("  Using global server config list.");
             List<? extends String> rawGlobalList = ModConfig.SERVER.globalAutoOffhandItems.get();
             effectiveConfigEntries = new ArrayList<>(rawGlobalList); // Assign server list
             AutoOffhand.LOGGER.debug("  Global Config List has {} entries.", effectiveConfigEntries.size());
         }
-        // else: effectiveConfigEntries already holds the player's list from the capability check above
 
         // If after all checks, the effective list is null or empty, nothing can match
         if (effectiveConfigEntries == null || effectiveConfigEntries.isEmpty()) {
@@ -269,38 +255,38 @@ public class ForgeEventHandler {
 
         // --- END Config List Determination ---
 
-
         // 1. Check the determined item list (Registry Names and NBT data)
-        AutoOffhand.LOGGER.debug("  Checking item against effective list..."); // Use static logger
+        AutoOffhand.LOGGER.debug("  Checking item against effective list...");
         for (String entry : effectiveConfigEntries) { // Use the determined list
             Object parsedEntry = ConfigItemUtils.parseConfigEntry(entry);
-            AutoOffhand.LOGGER.debug("    Parsing entry '{}': Result={}", entry, parsedEntry); // Log parsing result // Use static logger
+            AutoOffhand.LOGGER.debug("    Parsing entry '{}': Result={}", entry, parsedEntry);
 
             if (parsedEntry instanceof ResourceLocation) {
                 // Match against registry name
                 boolean match = registryName.equals(parsedEntry);
-                AutoOffhand.LOGGER.debug("      Comparing registry name {} == {}: {}", registryName, parsedEntry, match); // Use static logger
+                AutoOffhand.LOGGER.debug("      Comparing registry name {} == {}: {}", registryName, parsedEntry, match);
                 if (match) {
-                    AutoOffhand.LOGGER.debug("  MATCH FOUND (Registry Name): {} in effective list", parsedEntry); // Use static logger
+                    AutoOffhand.LOGGER.debug("  MATCH FOUND (Registry Name): {} in effective list", parsedEntry);
                     return true;
                 }
             } else if (parsedEntry instanceof ItemStack) {
                 // Match against specific item stack (ignoring damage and count)
+                // Note: stacksMatchIgnoreDamageAndCount might need internal updates too
                 boolean match = ConfigItemUtils.stacksMatchIgnoreDamageAndCount((ItemStack) parsedEntry, stack);
-                AutoOffhand.LOGGER.debug("      Comparing item stack (ignore damage/count) {} == {}: {}", parsedEntry, stack, match); // Use static logger
+                AutoOffhand.LOGGER.debug("      Comparing item stack (ignore damage/count) {} == {}: {}", parsedEntry, stack, match);
                 if (match) {
-                    AutoOffhand.LOGGER.debug("  MATCH FOUND (ItemStack NBT): {} in effective list", parsedEntry); // Use static logger
+                    AutoOffhand.LOGGER.debug("  MATCH FOUND (ItemStack NBT): {} in effective list", parsedEntry);
                     return true;
                 }
             } else {
-                AutoOffhand.LOGGER.debug("      Ignoring invalid/unparsed entry: {}", entry); // Use static logger
+                AutoOffhand.LOGGER.debug("      Ignoring invalid/unparsed entry: {}", entry);
             }
             // Ignore null parsedEntry (invalid config lines)
         }
 
         // Removed substring checks as they were removed from config
 
-        AutoOffhand.LOGGER.debug("  No match found in effective list for item {}. Returning false.", stack); // Use static logger
+        AutoOffhand.LOGGER.debug("  No match found in effective list for item {}. Returning false.", stack);
         return false; // No criteria matched in the effective list
     }
 
@@ -329,12 +315,12 @@ public class ForgeEventHandler {
 
         // --- Attempt to get the ItemStack ---
         ItemStack representativeStack = ItemStack.EMPTY;
-        if (entity instanceof TridentEntity) {
-            // Specific handling for Trident to get enchantments etc.
-            TridentEntity tridentEntity = (TridentEntity) entity;
+        if (entity instanceof ThrownTrident) {
+            // Basic handling for Trident
+            ThrownTrident tridentEntity = (ThrownTrident) entity;
             representativeStack = new ItemStack(Items.TRIDENT); // Start with base
-            CompoundNBT tridentNBT = tridentEntity.saveWithoutId(new CompoundNBT());
-            if (tridentNBT.contains("Trident", 10)) { // 10 = CompoundNBT Type ID
+            CompoundTag tridentNBT = tridentEntity.saveWithoutId(new CompoundTag());
+            if (tridentNBT.contains("Trident", 10)) { // 10 = CompoundTag Type ID
                 ItemStack nbtStack = ItemStack.of(tridentNBT.getCompound("Trident"));
                 if (!nbtStack.isEmpty()) {
                     representativeStack = nbtStack; // Use stack from NBT if available
@@ -344,16 +330,16 @@ public class ForgeEventHandler {
             // int loyaltyLevel = EnchantmentHelper.getItemEnchantmentLevel(Enchantments.LOYALTY, representativeStack);
             // if (loyaltyLevel <= 0) return; // Example: Only handle Loyalty tridents
 
-        } else if (entityType.getRegistryName() != null && entityType.getRegistryName().equals(TETRA_THROWN_MODULAR_ITEM_ID)) {
+        } else if (ForgeRegistries.ENTITIES.getKey(entityType) != null && ForgeRegistries.ENTITIES.getKey(entityType).equals(TETRA_THROWN_MODULAR_ITEM_ID)) {
             // Handling for Tetra's thrown_modular_item
             // We need to figure out how Tetra stores the item data.
-            // Approach 1: Check if it's a ProjectileEntity and try getPickupItem() via reflection (less ideal)
+            // Approach 1: Check if it's a Projectile and try getPickupItem() via reflection (less ideal)
             // Approach 2: Inspect NBT data
-            CompoundNBT entityNBT = entity.saveWithoutId(new CompoundNBT());
-            // AutoOffhand.LOGGER.info("NBT for Tetra entity {}: {}", entity.getStringUUID(), entityNBT.toString()); // Log the full NBT - Keep for debugging if needed
+            CompoundTag entityNBT = entity.saveWithoutId(new CompoundTag());
+            // AutoOffhand.LOGGER.info("NBT for Tetra entity {}: {}", entity.getStringUUID(), entityNBT.toString()); // Keep for debugging if needed, may change in the future
             // *** NBT structure confirmed from logs ***
-            if (entityNBT.contains("stack", 10)) { // Correct key is "stack"
-                ItemStack nbtStack = ItemStack.of(entityNBT.getCompound("stack")); // Use "stack" key
+            if (entityNBT.contains("stack", 10)) {
+                ItemStack nbtStack = ItemStack.of(entityNBT.getCompound("stack"));
                 if (!nbtStack.isEmpty()) {
                     representativeStack = nbtStack;
                     AutoOffhand.LOGGER.debug("Extracted ItemStack {} from Tetra entity NBT using 'stack' key.", representativeStack);
@@ -369,7 +355,6 @@ public class ForgeEventHandler {
         }
         // Add more 'else if' blocks here for other supported entity types if necessary
 
-        // If we couldn't determine the item stack, abort
         if (representativeStack.isEmpty()) {
             AutoOffhand.LOGGER.debug("Could not determine representative ItemStack for returning entity {}. Aborting offhand check.", entity.getStringUUID());
             return;
@@ -378,26 +363,26 @@ public class ForgeEventHandler {
         // --- Get Owner and Schedule Check ---
         Entity owner = null;
         // Tridents store owner directly
-        if (entity instanceof TridentEntity) {
-            owner = ((TridentEntity) entity).getOwner();
+        if (entity instanceof ThrownTrident) {
+            owner = ((ThrownTrident) entity).getOwner();
         }
-        // Other projectiles might use getOwner() if they extend ProjectileEntity
-        else if (entity instanceof ProjectileEntity) {
-            owner = ((ProjectileEntity) entity).getOwner();
+        // Other projectiles might use getOwner() if they extend Projectile
+        else if (entity instanceof Projectile) {
+            owner = ((Projectile) entity).getOwner();
         }
         // Add other owner-retrieval logic if needed for specific entities
 
-        if (owner instanceof PlayerEntity) {
-            PlayerEntity player = (PlayerEntity) owner;
+        if (owner instanceof Player) {
+            Player player = (Player) owner;
             MinecraftServer server = player.getServer();
-            if (server != null && !player.removed) {
-                AutoOffhand.LOGGER.debug("Projectile {} returning to player {}. Scheduling inventory check for item {}.", entityType.getRegistryName(), player.getName().getString(), representativeStack);
+            if (server != null && !player.isRemoved()) {
+                AutoOffhand.LOGGER.debug("Projectile returning to player {}. Scheduling inventory check for item {}.", player.getName().getString(), representativeStack);
                 final ItemStack finalRepresentativeStack = representativeStack.copy(); // Final copy for lambda
                 // Schedule task for end of tick
-                server.tell(new net.minecraft.util.concurrent.TickDelayedTask(server.getTickCount(), () -> {
-                    // Re-fetch player instance inside the task in case something changed
-                    PlayerEntity taskPlayer = server.getPlayerList().getPlayer(player.getUUID());
-                    if (taskPlayer != null) { // Check if player still exists
+                server.tell(new TickTask(server.getTickCount(), () -> {
+                    // Re-fetch player instance in case something changed
+                    Player taskPlayer = server.getPlayerList().getPlayer(player.getUUID());
+                    if (taskPlayer != null) {
                         checkAndMoveSpecificInventoryItem(taskPlayer, finalRepresentativeStack);
                     }
                 }));
@@ -411,28 +396,25 @@ public class ForgeEventHandler {
      * @param player The player whose inventory to check.
      * @param specificItemToMove The specific ItemStack (type and NBT match, count ignored) to look for.
      */
-    private static void checkAndMoveSpecificInventoryItem(PlayerEntity player, ItemStack specificItemToMove) {
+    private static void checkAndMoveSpecificInventoryItem(Player player, ItemStack specificItemToMove) {
         // Double-check player is still valid and on server
-        if (player == null || player.level.isClientSide || specificItemToMove.isEmpty()) {
+        if (player == null || player.getLevel().isClientSide() || specificItemToMove.isEmpty()) {
             return;
         }
 
         // Check if offhand is empty
-        if (player.getItemInHand(Hand.OFF_HAND).isEmpty()) {
+        if (player.getItemInHand(InteractionHand.OFF_HAND).isEmpty()) {
             AutoOffhand.LOGGER.debug("Player {} offhand is empty. Scanning inventory for items to move.", player.getName().getString());
             AutoOffhand.LOGGER.debug("Player {} offhand is empty. Scanning inventory for specific item {} to move.", player.getName().getString(), specificItemToMove);
             // Iterate through main inventory slots (0-35)
-            for (int i = 0; i < player.inventory.items.size(); ++i) {
-                ItemStack stackInSlot = player.inventory.getItem(i);
+            for (int i = 0; i < player.getInventory().items.size(); ++i) {
+                ItemStack stackInSlot = player.getInventory().getItem(i);
                 // Check if the slot is not empty, if it matches the specific item we're looking for,
                 // AND if it's configured to be moved to the offhand.
-                if (!stackInSlot.isEmpty() && ItemStack.isSame(stackInSlot, specificItemToMove) && shouldMoveToOffhand(player, stackInSlot)) {
-                    AutoOffhand.LOGGER.debug("Found specific item {} in inventory slot {} for player {}. Moving to offhand.", stackInSlot.getItem().getRegistryName(), i, player.getName().getString());
-                    // Move the item to the offhand
-                    player.setItemInHand(Hand.OFF_HAND, stackInSlot.copy()); // Move a copy
-                    // Clear the original inventory slot
-                    player.inventory.setItem(i, ItemStack.EMPTY);
-                    // Stop after moving one item
+                if (!stackInSlot.isEmpty() && ItemStack.isSameItemSameTags(stackInSlot, specificItemToMove) && shouldMoveToOffhand(player, stackInSlot)) {
+                    AutoOffhand.LOGGER.debug("Found specific item in inventory slot {} for player {}. Moving to offhand.", i, player.getName().getString());
+                    player.setItemInHand(InteractionHand.OFF_HAND, stackInSlot.copy()); // Move a copy
+                    player.getInventory().setItem(i, ItemStack.EMPTY);
                     return;
                 }
             }

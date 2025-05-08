@@ -2,9 +2,9 @@ package com.thunderscore.autooffhand.network;
 
 import com.thunderscore.autooffhand.AutoOffhand;
 
-import net.minecraft.util.ResourceLocation;
-import net.minecraftforge.fml.network.NetworkRegistry;
-import net.minecraftforge.fml.network.simple.SimpleChannel;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.simple.SimpleChannel;
 
 public class NetworkHandler {
 
@@ -13,9 +13,9 @@ public class NetworkHandler {
     public static final ResourceLocation CHANNEL_NAME = new ResourceLocation(AutoOffhand.MOD_ID, "main");
 
     public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
-            CHANNEL_NAME, // Use the stored ResourceLocation
+            CHANNEL_NAME,
             () -> PROTOCOL_VERSION,
-            PROTOCOL_VERSION::equals, // Client requires server version to match if present
+            PROTOCOL_VERSION::equals,
             NetworkRegistry.acceptMissingOr(PROTOCOL_VERSION::equals) // Server accepts clients missing the channel or matching the version
     );
 
@@ -25,41 +25,40 @@ public class NetworkHandler {
     }
 
     public static void register() {
-        AutoOffhand.LOGGER.debug("Registering network packets...");
+        AutoOffhand.LOGGER.info("Registering network packets...");
 
-        // Register the packet for updating config from client to server
+        // Update config from client to server
         INSTANCE.registerMessage(nextId(),
-                UpdateConfigPacket.class,         // Packet class
-                UpdateConfigPacket::encode,       // Encoder
-                UpdateConfigPacket::decode,       // Decoder
-                UpdateConfigPacket::handle        // Handler
+                UpdateConfigPacket.class,
+                UpdateConfigPacket::encode,
+                UpdateConfigPacket::decode,
+                UpdateConfigPacket::handle
         );
 
-        // Register the packet for syncing config from server to client
+        // Sync config from server to client
         INSTANCE.registerMessage(nextId(),
-                SyncConfigPacket.class,           // Packet class
-                SyncConfigPacket::encode,         // Encoder
-                SyncConfigPacket::decode,         // Decoder
-                SyncConfigPacket::handle          // Handler
-                // Optional: Specify network direction if needed, though SimpleChannel often infers
+                SyncConfigPacket.class,
+                SyncConfigPacket::encode,
+                SyncConfigPacket::decode,
+                SyncConfigPacket::handle
         );
 
-        // Register the packet for opening GUI from server to client
+        // Open GUI from server to client
         INSTANCE.registerMessage(nextId(),
-                OpenConfigGuiPacket.class,        // Packet class
-                OpenConfigGuiPacket::encode,      // Encoder
-                OpenConfigGuiPacket::decode,      // Decoder
-                OpenConfigGuiPacket::handle       // Handler
+                OpenConfigGuiPacket.class,
+                OpenConfigGuiPacket::encode,
+                OpenConfigGuiPacket::decode,
+                OpenConfigGuiPacket::handle
         );
 
-        // Register the packet for requesting config from client to server
+        // Request config from client to server
         INSTANCE.registerMessage(nextId(),
-                RequestConfigPacket.class,        // Packet class
-                RequestConfigPacket::encode,      // Encoder
-                RequestConfigPacket::decode,      // Decoder
-                RequestConfigPacket::handle       // Handler
+                RequestConfigPacket.class,
+                RequestConfigPacket::encode,
+                RequestConfigPacket::decode,
+                RequestConfigPacket::handle
         );
 
-        AutoOffhand.LOGGER.debug("Network packets registered.");
+        AutoOffhand.LOGGER.info("Network packets registered.");
     }
 }

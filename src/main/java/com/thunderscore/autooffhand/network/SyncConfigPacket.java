@@ -1,12 +1,11 @@
 package com.thunderscore.autooffhand.network;
 
 import com.thunderscore.autooffhand.AutoOffhand;
-// Removed ModConfig import as we no longer set client-side config values here
 import com.thunderscore.autooffhand.gui.ConfigItemListScreen;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.network.PacketBuffer;
-import net.minecraftforge.fml.network.NetworkEvent;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 
@@ -29,8 +28,8 @@ public class SyncConfigPacket {
     // public boolean isServerConfig() { return isServerConfig; }
 
     // Encoder: Write data to the buffer (Server -> Client)
-    public static void encode(SyncConfigPacket msg, PacketBuffer buf) {
-        AutoOffhand.LOGGER.debug("Encoding SyncConfigPacket (isServerConfig={}) with {} entries.", msg.isServerConfig, msg.configEntries.size());
+    public static void encode(SyncConfigPacket msg, FriendlyByteBuf buf) {
+        AutoOffhand.LOGGER.info("Encoding SyncConfigPacket (isServerConfig={}) with {} entries.", msg.isServerConfig, msg.configEntries.size());
         buf.writeBoolean(msg.isServerConfig); // Write flag first
         buf.writeVarInt(msg.configEntries.size());
         for (String entry : msg.configEntries) {
@@ -39,10 +38,10 @@ public class SyncConfigPacket {
     }
 
     // Decoder: Read data from the buffer (Client side)
-    public static SyncConfigPacket decode(PacketBuffer buf) {
+    public static SyncConfigPacket decode(FriendlyByteBuf buf) {
         boolean isServer = buf.readBoolean(); // Read flag first
         int size = buf.readVarInt();
-        AutoOffhand.LOGGER.debug("Decoding SyncConfigPacket (isServerConfig={}) with {} entries.", isServer, size);
+        AutoOffhand.LOGGER.info("Decoding SyncConfigPacket (isServerConfig={}) with {} entries.", isServer, size);
         List<String> entries = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             entries.add(buf.readUtf());
@@ -56,7 +55,7 @@ public class SyncConfigPacket {
             // IMPORTANT: Execute on the Client thread
             // Use DistExecutor to ensure this runs only on the client side safely
             DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
-                AutoOffhand.LOGGER.debug("Received SyncConfigPacket on client (isServerConfig={}) with {} entries.", msg.isServerConfig, msg.configEntries.size());
+                AutoOffhand.LOGGER.info("Received SyncConfigPacket on client (isServerConfig={}) with {} entries.", msg.isServerConfig, msg.configEntries.size());
                 try {
                     // Update the GUI only if it's open AND it matches the type of config being synced.
                     Screen currentScreen = Minecraft.getInstance().screen;
@@ -66,16 +65,16 @@ public class SyncConfigPacket {
                         // We need to expose the isServerConfig flag from the screen or add a getter.
                         // Let's assume we add a public getter `isEditingServerConfig()` to ConfigItemListScreen.
                         // if (configScreen.isEditingServerConfig() == msg.isServerConfig) { // TODO: Add getter to ConfigItemListScreen
-                        // For now, let's just refresh regardless, but add a TODO
+                        // For now, let's just refresh regardless
                         // TODO: Check if configScreen.isServerConfig matches msg.isServerConfig before refreshing
-                        AutoOffhand.LOGGER.debug("Config screen is open, refreshing entries from synced config (isServerConfig={}).", msg.isServerConfig);
+                        AutoOffhand.LOGGER.info("Config screen is open, refreshing entries from synced config (isServerConfig={}).", msg.isServerConfig);
                         configScreen.refreshEntriesFromList(msg.configEntries);
                         // } else {
-                        //    AutoOffhand.LOGGER.debug("Config screen is open but for the wrong config type (screen={}, packet={}). Ignoring sync.", configScreen.isEditingServerConfig(), msg.isServerConfig);
+                        //    AutoOffhand.LOGGER.info("Config screen is open but for the wrong config type (screen={}, packet={}). Ignoring sync.", configScreen.isEditingServerConfig(), msg.isServerConfig);
                         // }
                     } else {
                         // If the screen isn't open, we don't need to do anything.
-                        AutoOffhand.LOGGER.debug("Config screen not open, no GUI update needed from SyncConfigPacket.");
+                        AutoOffhand.LOGGER.info("Config screen not open, no GUI update needed from SyncConfigPacket.");
                     }
 
                 } catch (Exception e) {

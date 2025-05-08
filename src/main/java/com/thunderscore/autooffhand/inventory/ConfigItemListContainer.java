@@ -1,24 +1,22 @@
 package com.thunderscore.autooffhand.inventory;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.inventory.container.Container;
-import net.minecraft.inventory.container.Slot;
-import net.minecraft.item.ItemStack;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import com.thunderscore.autooffhand.ClientSetup;
 
-// Placeholder for a ContainerType if we register one later
-// import com.thunderscore.autooffhand.AutoOffhand;
-
-public class ConfigItemListContainer extends Container {
+public class ConfigItemListContainer extends AbstractContainerMenu {
 
     // Define slot layout constants
     private static final int CONFIG_SLOTS_X = 8;
     private static final int CONFIG_SLOTS_Y = 18;
-    private static final int CONFIG_ROWS = 3;
+    private static final int CONFIG_ROWS = 6;
     private static final int CONFIG_COLS = 9;
-    public static final int CONFIG_SLOT_COUNT = CONFIG_ROWS * CONFIG_COLS; // 27 slots
+    public static final int CONFIG_SLOT_COUNT = CONFIG_ROWS * CONFIG_COLS;
 
     // Standard Y coordinates for player inventory with generic_54.png (imageHeight = 222)
     private static final int PLAYER_INV_X = 8;
@@ -26,27 +24,24 @@ public class ConfigItemListContainer extends Container {
     private static final int PLAYER_HOTBAR_Y = 198; // Correct Y for hotbar
 
     // This inventory will be managed by the Screen to display config items
-    // It doesn't store real items, just visual representations.
-    private final IInventory configDisplayInventory;
-    private final PlayerInventory playerInventory;
+    private final Container configDisplayInventory;
+    private final Inventory playerInventory;
 
     // Client-side constructor
-    public ConfigItemListContainer(int windowId, PlayerInventory playerInv) {
+    public ConfigItemListContainer(int windowId, Inventory playerInv) {
         // Create a dummy inventory for the config display slots
-        this(windowId, playerInv, new Inventory(CONFIG_SLOT_COUNT));
+        this(windowId, playerInv, new SimpleContainer(CONFIG_SLOT_COUNT));
     }
 
-    // Server-side constructor (if needed, though this GUI is client-only focused)
-    // Or common constructor used by client
-    public ConfigItemListContainer(int windowId, PlayerInventory playerInv, IInventory configDisplayInv) {
-        // Placeholder for ContainerType registration if needed
-        // super(AutoOffhand.CONFIG_ITEM_LIST_CONTAINER_TYPE, windowId);
-        super(null, windowId); // Using null ContainerType for now
+    // Common constructor used by client and potentially server if needed later
+    public ConfigItemListContainer(int windowId, Inventory playerInv, Container configDisplayInv) {
+        // Reference the MenuType RegistryObject from ClientSetup
+        super(ClientSetup.CONFIG_ITEM_LIST_CONTAINER.get(), windowId);
 
-        checkContainerSize(configDisplayInv, CONFIG_SLOT_COUNT);
+        checkContainerSize(configDisplayInv, CONFIG_SLOT_COUNT); // Check custom inventory size
         this.configDisplayInventory = configDisplayInv;
         this.playerInventory = playerInv;
-        configDisplayInv.startOpen(playerInv.player);
+        configDisplayInv.startOpen(playerInv.player); // Use Container's method
 
         // Add Config Display Slots (Read-only visually)
         for (int row = 0; row < CONFIG_ROWS; ++row) {
@@ -57,8 +52,16 @@ public class ConfigItemListContainer extends Container {
                         // Prevent placing items into config display slots
                         return false;
                     }
-                    // Optional: Override mayPickup to return false if needed,
-                    // but removal is handled by screen click, not pickup.
+                    // Prevent taking items out directly
+                    @Override
+                    public boolean mayPickup(Player pPlayer) {
+                        return false;
+                    }
+                    // Allow screen interaction (like deletion)
+                    @Override
+                    public boolean isActive() {
+                        return true; // Or based on screen logic if needed
+                    }
                 });
             }
         }
@@ -78,19 +81,19 @@ public class ConfigItemListContainer extends Container {
 
     // Called when the container is closed
     @Override
-    public void removed(PlayerEntity playerIn) {
+    public void removed(Player playerIn) {
         super.removed(playerIn);
         this.configDisplayInventory.stopOpen(playerIn);
     }
 
     @Override
-    public boolean stillValid(PlayerEntity playerIn) {
-        // Basic validity check, can be expanded if needed
+    public boolean stillValid(Player playerIn) {
+        // Basic validity check
         return this.configDisplayInventory.stillValid(playerIn);
     }
 
     @Override
-    public ItemStack quickMoveStack(PlayerEntity playerIn, int index) {
+    public ItemStack quickMoveStack(Player playerIn, int index) {
         ItemStack itemstack = ItemStack.EMPTY;
         Slot slot = this.slots.get(index);
 
@@ -99,29 +102,31 @@ public class ConfigItemListContainer extends Container {
             itemstack = slotStack.copy();
 
             // Index ranges:
-            // Config Display: 0 to CONFIG_SLOT_COUNT - 1 (0-26)
-            // Player Inventory: CONFIG_SLOT_COUNT to CONFIG_SLOT_COUNT + 26 (27-53)
-            // Player Hotbar: CONFIG_SLOT_COUNT + 27 to CONFIG_SLOT_COUNT + 35 (54-62)
+            // Config Display: 0 to CONFIG_SLOT_COUNT - 1 (0-53)
+            // Player Inventory: CONFIG_SLOT_COUNT to CONFIG_SLOT_COUNT + 26 (54-80)
+            // Player Hotbar: CONFIG_SLOT_COUNT + 27 to CONFIG_SLOT_COUNT + 35 (81-89)
+            // Total slots = 54 + 27 + 9 = 90
 
-            if (index < CONFIG_SLOT_COUNT) {
+            boolean merged = false;
+
+            if (index < CONFIG_SLOT_COUNT) { // Index is 0-53 (Config Display)
                 // Trying to shift-click *from* config display slot. Prevent merge.
-                return ItemStack.EMPTY; // Prevent moving items out via shift-click
-            } else {
-                // Trying to shift-click *from* player inventory/hotbar. Prevent merge into config slots.
-                // Try merging into player inventory (excluding hotbar)
-                if (index >= CONFIG_SLOT_COUNT && index < CONFIG_SLOT_COUNT + 27) { // From main inventory
-                    if (!this.moveItemStackTo(slotStack, CONFIG_SLOT_COUNT + 27, CONFIG_SLOT_COUNT + 36, false)) { // To hotbar
-                        return ItemStack.EMPTY;
-                    }
-                }
-                // Try merging into hotbar
-                else if (index >= CONFIG_SLOT_COUNT + 27 && index < CONFIG_SLOT_COUNT + 36) { // From hotbar
-                    if (!this.moveItemStackTo(slotStack, CONFIG_SLOT_COUNT, CONFIG_SLOT_COUNT + 27, false)) { // To main inventory
-                        return ItemStack.EMPTY;
-                    }
-                }
+                return ItemStack.EMPTY;
+
+            } else if (index < CONFIG_SLOT_COUNT + 27) { // Index is 54-80 (Player Main Inventory)
+                // Try merging into hotbar first.
+                merged = this.moveItemStackTo(slotStack, CONFIG_SLOT_COUNT + 27, CONFIG_SLOT_COUNT + 36, false); // To hotbar (81-89)
+
+            } else if (index < CONFIG_SLOT_COUNT + 36) { // Index is 81-89 (Player Hotbar)
+                // Try merging into main inventory first.
+                merged = this.moveItemStackTo(slotStack, CONFIG_SLOT_COUNT, CONFIG_SLOT_COUNT + 27, false); // To main inventory (54-80)
             }
 
+            if (!merged) {
+                 return ItemStack.EMPTY;
+            }
+
+            // Successful merge attempt
             if (slotStack.isEmpty()) {
                 slot.set(ItemStack.EMPTY);
             } else {
@@ -129,22 +134,21 @@ public class ConfigItemListContainer extends Container {
             }
 
             if (slotStack.getCount() == itemstack.getCount()) {
-                return ItemStack.EMPTY; // No change happened
+                // If counts match, nothing effectively moved for this return value.
+                return ItemStack.EMPTY;
             }
 
-            slot.onTake(playerIn, slotStack);
+            slot.onTake(playerIn, slotStack); // slotStack here is the original stack *before* merging
         }
 
-        return itemstack;
+        return itemstack; // Original copied stack
     }
 
-    // Getter for the screen to access player inventory
-    public PlayerInventory getPlayerInventory() {
+    public Inventory getPlayerInventory() {
         return playerInventory;
     }
 
-    // Getter for the screen to access the config display inventory
-    public IInventory getConfigDisplayInventory() {
+    public Container getConfigDisplayInventory() {
         return configDisplayInventory;
     }
 }

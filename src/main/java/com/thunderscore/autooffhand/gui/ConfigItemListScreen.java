@@ -6,72 +6,65 @@ import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.mojang.blaze3d.matrix.MatrixStack;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.thunderscore.autooffhand.config.ConfigItemUtils;
-// Removed ModConfig import, as we no longer read config values directly here
 import com.thunderscore.autooffhand.inventory.ConfigItemListContainer;
 import com.thunderscore.autooffhand.network.NetworkHandler;
 import com.thunderscore.autooffhand.network.UpdateConfigPacket;
 
-import net.minecraft.client.gui.screen.inventory.ContainerScreen;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.gui.widget.button.Button;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.inventory.container.ClickType;
-import net.minecraft.inventory.container.Slot;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.StringTextComponent;
-import net.minecraft.util.text.TextFormatting;
-import net.minecraft.util.text.TranslationTextComponent;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextComponent;
+import net.minecraft.network.chat.TranslatableComponent;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import javax.annotation.Nullable;
 
-public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContainer> {
+public class ConfigItemListScreen extends AbstractContainerScreen<ConfigItemListContainer> {
 
     private static final Logger LOGGER = LogManager.getLogger();
     // Standard 176x166 chest texture
     private static final ResourceLocation CONTAINER_BACKGROUND = new ResourceLocation("minecraft", "textures/gui/container/generic_54.png");
 
-    private final PlayerInventory playerInventory;
-    private List<String> currentConfigEntries; // Local cache of config list
-    // Removed screen's local displayInventory, will use container's
+    private List<String> currentConfigEntries;
 
     // Pagination
     private int currentPage = 0;
     private int totalPages = 0;
     private Button nextPageButton;
     private Button prevPageButton;
-    private TextFieldWidget searchBox; // Add field for search box
-    private Button addItemButton; // Add field for the add button
+    private EditBox searchBox;
     @Nullable private final List<String> initialConfigEntries;
     private final boolean isServerConfig;
 
     // Constructor for keybind/default opening (assumes player config)
-    public ConfigItemListScreen(ConfigItemListContainer container, PlayerInventory playerInv, ITextComponent title) {
-        // Chain to the main constructor, passing null for entries and false for isServerConfig
+    public ConfigItemListScreen(ConfigItemListContainer container, Inventory playerInv, Component title) { // Updated types
         this(container, playerInv, title, null, false);
         // Note: The actual player config list will be requested via RequestConfigPacket by the keybind handler
     }
 
     // Main constructor accepting the list and the flag
-    public ConfigItemListScreen(ConfigItemListContainer container, PlayerInventory playerInv, ITextComponent title, @Nullable List<String> initialConfigEntries, boolean isServerConfig) {
+    public ConfigItemListScreen(ConfigItemListContainer container, Inventory playerInv, Component title, @Nullable List<String> initialConfigEntries, boolean isServerConfig) { // Updated types
         super(container, playerInv, title);
-        this.initialConfigEntries = initialConfigEntries; // Store the list
-        this.isServerConfig = isServerConfig; // Store the flag
-        this.playerInventory = playerInv;
+        this.initialConfigEntries = initialConfigEntries;
+        this.isServerConfig = isServerConfig;
         // Use dimensions for generic_54.png (6 rows + player inv)
         this.imageWidth = 176;
-        this.imageHeight = 222; // Correct height for the texture
+        this.imageHeight = 222;
         // Adjust player inventory label position based on new height
         this.inventoryLabelY = this.imageHeight - 94;
 
-        // No need to initialize screen's local inventory anymore
         // DO NOT load config here, wait for init() after buttons are created
     }
 
@@ -85,58 +78,52 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
 
         // --- Search Box and Add Button ---
         // Position horizontally next to the title
-        int searchBoxX = this.leftPos + this.titleLabelX + this.font.width(this.title) + 10; // X pos after title + padding
+        int searchBoxX = this.leftPos + this.titleLabelX + this.font.width(this.title) + 10; // X pos after title + padding // title is Component now
         int searchBoxY = this.topPos + this.titleLabelY - 1; // Align Y with title baseline
         int searchBoxWidth = 80; // Adjust width as needed
 
-        this.searchBox = new TextFieldWidget(this.font, searchBoxX, searchBoxY, searchBoxWidth, this.font.lineHeight + 3, new TranslationTextComponent("gui.autooffhand.search_box_narrate"));
+        this.searchBox = new EditBox(this.font, searchBoxX, searchBoxY, searchBoxWidth, this.font.lineHeight + 3, new TranslatableComponent("gui.autooffhand.search_box_narrate"));
         this.searchBox.setMaxLength(50);
         this.searchBox.setBordered(true);
         this.searchBox.setVisible(true);
         this.searchBox.setTextColor(16777215);
-        this.addWidget(this.searchBox);
+        this.addRenderableWidget(this.searchBox);
 
-        int addButtonWidth = 30; // Smaller button?
+        int addButtonWidth = 30;
         int addButtonX = searchBoxX + searchBoxWidth + 4;
-        this.addItemButton = this.addButton(new Button(addButtonX, searchBoxY, addButtonWidth, this.font.lineHeight + 3, new TranslationTextComponent("gui.autooffhand.add_button"), (button) -> { // Match height with search box
+        this.addRenderableWidget(new Button(addButtonX, searchBoxY, addButtonWidth, this.font.lineHeight + 3, new TranslatableComponent("gui.autooffhand.add_button"), (button) -> {
             LOGGER.debug("Add Text button pressed!");
             addTextEntry(this.searchBox.getValue());
         }));
 
 
         // --- Pagination Buttons ---
-        // Keep pagination buttons at the top right, ensure they don't overlap Add button
-        int pageButtonY = this.topPos + this.titleLabelY - 1; // Align Y with title/search
+        int pageButtonY = this.topPos + this.titleLabelY - 1;
         int pageButtonWidth = 20;
         int pageButtonXOffset = this.leftPos + this.imageWidth - pageButtonWidth - 5; // Right align buttons
 
         // Ensure Add button doesn't overlap pagination buttons
         if (addButtonX + addButtonWidth >= pageButtonXOffset - pageButtonWidth - 4) {
-            // If overlap, maybe reduce search box width or move pagination down slightly?
-            // For now, let's assume it fits or slightly overlaps. Adjust widths above if needed.
+            // Maybe reduce search box width or move pagination down slightly?
+            // Adjust widths above if needed.
             LOGGER.warn("Add/Search widgets might overlap pagination buttons. Adjust layout if necessary.");
         }
 
-        this.prevPageButton = this.addButton(new Button(pageButtonXOffset - pageButtonWidth - 2, pageButtonY, pageButtonWidth, this.font.lineHeight + 3, new StringTextComponent("<"), (button) -> { // Match height
+        this.prevPageButton = this.addRenderableWidget(new Button(pageButtonXOffset - pageButtonWidth - 2, pageButtonY, pageButtonWidth, this.font.lineHeight + 3, new TextComponent("<"), (button) -> {
             if (currentPage > 0) {
                 currentPage--;
                 updateDisplayInventory();
             }
         }));
 
-        this.nextPageButton = this.addButton(new Button(pageButtonXOffset, pageButtonY, pageButtonWidth, this.font.lineHeight + 3, new StringTextComponent(">"), (button) -> { // Match height
+        this.nextPageButton = this.addRenderableWidget(new Button(pageButtonXOffset, pageButtonY, pageButtonWidth, this.font.lineHeight + 3, new TextComponent(">"), (button) -> {
             if (currentPage < totalPages - 1) {
                 currentPage++;
                 updateDisplayInventory();
             }
         }));
 
-        // Load config entries and update display AFTER buttons are initialized
         loadConfigEntries();
-        // updatePaginationButtons() is called by loadConfigEntries -> updateDisplayInventory
-
-        // Set initial focus to the search box maybe?
-        this.setInitialFocus(this.searchBox);
     }
 
     /**
@@ -195,13 +182,13 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
                     entryToAdd = keyString;
                     entryFound = true;
                     LOGGER.debug("Found matching registry ID: {}", entryToAdd);
-                    break; // Use the first match
+                    break;
                 }
             }
             if (!entryFound) {
                 LOGGER.debug("No matching item registry ID found for substring: {}", trimmedText);
                 // Optionally provide feedback to player
-                return; // Nothing to add
+                return;
             }
         }
 
@@ -210,14 +197,13 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
             if (!this.currentConfigEntries.contains(entryToAdd)) {
                 LOGGER.debug("Adding entry to config: {}", entryToAdd);
                 this.currentConfigEntries.add(entryToAdd);
-                saveConfigEntries(); // Save and refresh display
+                saveConfigEntries();
                 this.searchBox.setValue(""); // Clear search box on success
             } else {
                 LOGGER.debug("Entry '{}' is already in the config.", entryToAdd);
                 // Optionally provide feedback
             }
         } else {
-            // This case should ideally not be reached if logic above is correct
             LOGGER.warn("addTextEntry reached end without a valid entryToAdd for input: {}", textToAdd);
         }
     }
@@ -228,16 +214,11 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
         List<String> configListToUse;
 
         if (this.initialConfigEntries != null) {
-            // Use the list provided by the OpenConfigGuiPacket
             LOGGER.debug("Using initial entries provided by packet ({} entries).", this.initialConfigEntries.size());
             configListToUse = new ArrayList<>(this.initialConfigEntries); // Use a mutable copy
         } else {
-            // This case should now primarily happen briefly when opened via keybind,
-            // before the RequestConfigPacket -> OpenConfigGuiPacket round trip completes.
-            // Initialize with an empty list temporarily.
             LOGGER.debug("No initial entries provided (likely opened via keybind, waiting for server response). Starting with empty list.");
             configListToUse = new ArrayList<>();
-            // We already know isServerConfig is false if initialConfigEntries is null due to constructor chaining.
         }
 
         // Use the determined list (either from packet or temporary empty list)
@@ -252,19 +233,13 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
         // Pass the flag to the UpdateConfigPacket constructor
         NetworkHandler.INSTANCE.sendToServer(new UpdateConfigPacket(this.currentConfigEntries, this.isServerConfig));
 
-        // We don't save the client-side config file anymore.
-        // We also don't immediately reload here, as the server now holds the truth.
-        // The display *will* update visually because we modified currentConfigEntries locally
-        // before calling save, and updateDisplayInventory uses that local list.
-        // For a truly robust solution, the server could send back a confirmation or the updated list,
-        // but this is simpler for now.
         calculatePagination(); // Recalculate pagination based on local changes
         updateDisplayInventory(); // Update display based on local changes
     }
 
     private void calculatePagination() {
         this.totalPages = (int) Math.ceil((double) currentConfigEntries.size() / ConfigItemListContainer.CONFIG_SLOT_COUNT);
-        if (this.totalPages == 0) this.totalPages = 1; // Always at least one page
+        if (this.totalPages == 0) this.totalPages = 1;
         // Clamp current page
         this.currentPage = Math.max(0, Math.min(this.currentPage, this.totalPages - 1));
     }
@@ -277,19 +252,18 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
     // Updates the visual inventory (linked to container slots) based on the current page and config entries
     private void updateDisplayInventory() {
         // Get the inventory linked to the container's display slots
-        IInventory containerDisplayInv = this.menu.getConfigDisplayInventory();
-        containerDisplayInv.clearContent(); // Clear previous items
-        // Revert logging to DEBUG level
+        Container containerDisplayInv = this.getMenu().getConfigDisplayInventory();
+        containerDisplayInv.clearContent();
         LOGGER.debug("Updating display inventory for page {}. Total entries: {}. Entries on this page:", currentPage, currentConfigEntries.size());
 
         int startIndex = currentPage * ConfigItemListContainer.CONFIG_SLOT_COUNT;
         for (int i = 0; i < ConfigItemListContainer.CONFIG_SLOT_COUNT; ++i) {
             int configIndex = startIndex + i;
-            ItemStack finalStackToSet = ItemStack.EMPTY; // Default to empty
+            ItemStack finalStackToSet = ItemStack.EMPTY;
 
             if (configIndex < currentConfigEntries.size()) {
                 String entry = currentConfigEntries.get(configIndex);
-                LOGGER.debug("  Slot {}: Processing entry '{}'", i, entry); // Log entry (DEBUG level)
+                LOGGER.debug("  Slot {}: Processing entry '{}'", i, entry);
                 Object parsed = ConfigItemUtils.parseConfigEntry(entry);
                 ItemStack displayStack = ItemStack.EMPTY;
 
@@ -307,17 +281,17 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
                     if (!defaultStack.isEmpty()) {
                         displayStack = defaultStack;
                         // Add tooltip to indicate it matches any variant
-                        displayStack.setHoverName(new TranslationTextComponent("gui.autooffhand.any_variant_tooltip", defaultStack.getHoverName())
-                                .withStyle(TextFormatting.AQUA));
+                        displayStack.setHoverName(new TranslatableComponent("gui.autooffhand.any_variant_tooltip", defaultStack.getHoverName())
+                                .withStyle(ChatFormatting.AQUA));
                         LOGGER.debug("    Parsed as ResourceLocation: {}, Displaying: {}", rl, displayStack); // Log parsed RL (DEBUG level)
                     } else {
                         // Should not happen if config validation works, but handle gracefully
-                        displayStack = new ItemStack(Items.BARRIER).setHoverName(new StringTextComponent("Invalid ID: " + entry).withStyle(TextFormatting.RED));
+                        displayStack = new ItemStack(Items.BARRIER).setHoverName(new TextComponent("Invalid ID: " + entry).withStyle(ChatFormatting.RED));
                         LOGGER.warn("    Parsed as ResourceLocation but item not found: {}", rl); // Log warning
                     }
                 } else {
                     // Invalid entry, display barrier
-                    displayStack = new ItemStack(Items.BARRIER).setHoverName(new StringTextComponent("Invalid Entry: " + entry).withStyle(TextFormatting.RED));
+                    displayStack = new ItemStack(Items.BARRIER).setHoverName(new TextComponent("Invalid Entry: " + entry).withStyle(ChatFormatting.RED));
                     LOGGER.warn("    Failed to parse entry: {}", entry); // Log warning
                 }
                 finalStackToSet = displayStack; // Assign the determined stack
@@ -337,171 +311,150 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
 
 
     @Override
-    public void render(MatrixStack matrixStack, int mouseX, int mouseY, float partialTicks) {
-        this.renderBackground(matrixStack);
-        super.render(matrixStack, mouseX, mouseY, partialTicks); // Renders buttons added with addButton
-        // Explicitly render the search box
+    public void render(PoseStack poseStack, int mouseX, int mouseY, float partialTicks) {
+        // Tick the search box here as tick() is final
         if (this.searchBox != null) {
-            this.searchBox.render(matrixStack, mouseX, mouseY, partialTicks);
+            this.searchBox.tick();
         }
-        this.renderTooltip(matrixStack, mouseX, mouseY); // Render tooltips for items (like items in slots)
+        this.renderBackground(poseStack);
+        super.render(poseStack, mouseX, mouseY, partialTicks); // Renders widgets added with addRenderableWidget
+        // Explicitly render the search box (already handled by super.render if added via addRenderableWidget)
+        // if (this.searchBox != null) {
+        //     this.searchBox.render(poseStack, mouseX, mouseY, partialTicks);
+        // }
+        this.renderTooltip(poseStack, mouseX, mouseY); // Render tooltips for items (like items in slots)
     }
 
     @Override
-    protected void renderBg(MatrixStack matrixStack, float partialTicks, int mouseX, int mouseY) {
-        RenderSystem.color4f(1.0F, 1.0F, 1.0F, 1.0F);
-        this.minecraft.getTextureManager().bind(CONTAINER_BACKGROUND);
+    protected void renderBg(PoseStack poseStack, float partialTicks, int mouseX, int mouseY) {
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.setShaderTexture(0, CONTAINER_BACKGROUND);
         int x = (this.width - this.imageWidth) / 2;
         int y = (this.height - this.imageHeight) / 2;
-        this.blit(matrixStack, x, y, 0, 0, this.imageWidth, this.imageHeight);
+        this.blit(poseStack, x, y, 0, 0, this.imageWidth, this.imageHeight);
     }
 
     @Override
-    protected void renderLabels(MatrixStack matrixStack, int mouseX, int mouseY) {
+    protected void renderLabels(PoseStack poseStack, int mouseX, int mouseY) {
         // Draw title using the provided title component
-        this.font.draw(matrixStack, this.title.getString(), (float)this.titleLabelX, (float)this.titleLabelY, 4210752);
-        // Draw player inventory title
-        this.font.draw(matrixStack, this.playerInventory.getDisplayName().getString(), (float)this.inventoryLabelX, (float)this.inventoryLabelY, 4210752);
+        this.font.draw(poseStack, this.title, (float)this.titleLabelX, (float)this.titleLabelY, 4210752);
+        // Draw player inventory title (use field set by superclass)
+        this.font.draw(poseStack, this.playerInventoryTitle, (float)this.inventoryLabelX, (float)this.inventoryLabelY, 4210752); // Fixed syntax error
         // Draw search box label (optional, could use placeholder text)
-        // this.font.draw(matrixStack, "Search ID:", this.leftPos + 7 , this.topPos + 8, 4210752);
+        // this.font.draw(poseStack, "Search ID:", this.leftPos + 7 , this.topPos + 8, 4210752);
         // Draw page number if multiple pages exist
         if (totalPages > 1) {
             String pageText = String.format("%d / %d", currentPage + 1, totalPages);
             int pageTextWidth = this.font.width(pageText);
-            this.font.draw(matrixStack, pageText, this.imageWidth - pageTextWidth - 8, (float)this.titleLabelY, 4210752);
+            this.font.draw(poseStack, pageText, this.imageWidth - pageTextWidth - 8, (float)this.titleLabelY, 4210752);
         }
     }
 
-    // Handle mouse clicks for buttons etc.
+    // REMOVED mouseClicked override
+
+    // Override slotClicked to handle interactions directly
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Handle button clicks FIRST using super method.
-        if (super.mouseClicked(mouseX, mouseY, button)) {
-            LOGGER.debug("Screen mouseClicked handled by super (button click).");
-            return true; // Let super handle button clicks
+    protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
+        // Special handling for Offhand Swap (F key) which uses SWAP type and button 40
+        if (type == ClickType.SWAP && mouseButton == 40) {
+             LOGGER.debug("slotClicked intercepted Offhand Swap (F key). Blocking action while config GUI is open. slot={}, button={}, type={}", slotId, mouseButton, type);
+             // Do nothing, effectively blocking the swap keybind. Do NOT call super.
+             return;
         }
 
-        // If super didn't handle it (e.g., click wasn't on a button),
-        // we check if it was a click *outside* the slots that we might care about.
-        // However, slot clicks are now handled in slotClicked, so we generally
-        // don't need to do much here unless there are other clickable areas.
-        // Returning false here allows other potential handlers (like dragging) to work.
-        LOGGER.debug("Screen mouseClicked not handled by super, passing through (maybe handled by slotClicked or drag). mouseX={}, mouseY={}, button={}", mouseX, mouseY, button);
-        return false;
-    }
-
-    // Override to handle clicks ON SLOTS specifically
-    @Override
-    protected void slotClicked(Slot slotIn, int slotId, int mouseButton, ClickType type) {
-        // We handle clicks directly here for this client-side GUI.
-        // Do NOT call super.slotClicked() to avoid sending default inventory packets.
-
-        if (slotIn == null) {
-            LOGGER.debug("slotClicked called with null slot.");
-            return; // Click wasn't on a slot we know
+        // We only care about simple clicks (PICKUP type) for adding/removing items via click.
+        // Let other types (QUICK_MOVE, THROW, etc.) pass through to super, as they seem to work.
+        if (slot == null || type != ClickType.PICKUP) {
+            LOGGER.debug("slotClicked ignored or passed to super: slot={}, button={}, type={}.", slotId, mouseButton, type);
+            super.slotClicked(slot, slotId, mouseButton, type);
+            return;
         }
 
-        // Use INFO level for entry log to ensure visibility
-        LOGGER.debug("slotClicked: slotIndex={}, slotId={}, mouseButton={}, type={}, container={}",
-            slotIn.index, slotId, mouseButton, type, slotIn.container.getClass().getSimpleName());
+        // --- Handle PICKUP clicks for adding/removing ---
+        LOGGER.debug("slotClicked handling PICKUP: slotIndex={}, mouseButton={}, container={}",
+            slot.index, mouseButton, slot.container.getClass().getSimpleName());
 
-        ItemStack clickedStack = slotIn.getItem();
+        ItemStack clickedStack = slot.getItem(); // Use slot.getItem() which should be correct
 
         // Check if click is within player inventory (including hotbar)
-        // PlayerInventory slot indices for Container are usually complex, rely on container instance check.
-        boolean isPlayerInv = slotIn.container instanceof PlayerInventory; // More reliable check
-        LOGGER.debug("  Is click in player inventory? {}", isPlayerInv);
-
-        if (isPlayerInv) {
+        if (slot.container instanceof Inventory) {
             LOGGER.debug("  Click in player inventory.");
             if (!clickedStack.isEmpty()) {
                 LOGGER.debug("  Clicked stack is not empty: {}", clickedStack);
-                if (mouseButton == 0) { // Left Click - Add specific item NBT (excluding damage/count)
+                if (mouseButton == 0) { // Left Click - Add specific item NBT
                     LOGGER.debug("  Left click detected.");
-                    // Create a copy to modify for serialization
                     ItemStack stackToSerialize = clickedStack.copy();
-                    // Set count to 1 as required by parsing logic and requirement
                     stackToSerialize.setCount(1);
-                    // Remove Damage tag to ignore durability, if it exists
-                    if (stackToSerialize.hasTag() && stackToSerialize.getTag().contains("Damage")) { // Check if Damage tag exists before removing
-                        stackToSerialize.getTag().remove("Damage");
+                    if (stackToSerialize.isDamageableItem() && stackToSerialize.hasTag() && stackToSerialize.getTag().contains("Damage")) {
+                        stackToSerialize.getTag().remove("Damage"); // Remove damage for matching
                     }
-                    // Now serialize the modified stack
                     String serialized = ConfigItemUtils.serializeItemStack(stackToSerialize);
                     LOGGER.debug("  Serialized item: {}", serialized);
                     if (serialized != null && !this.currentConfigEntries.contains(serialized)) {
                         LOGGER.debug("  Adding serialized item to config: {}", serialized);
                         this.currentConfigEntries.add(serialized);
-                        saveConfigEntries(); // Save and refresh display
-                        // We don't return true here as slotClicked is void
+                        saveConfigEntries();
                     } else {
                         LOGGER.debug("  Serialized item is null or already in config.");
                     }
+                    // DO NOT call super.slotClicked - we handled it.
                 } else if (mouseButton == 1) { // Right Click - Add registry name only
                     LOGGER.debug("  Right click detected.");
-                    ResourceLocation registryName = clickedStack.getItem().getRegistryName();
+                    ResourceLocation registryName = ForgeRegistries.ITEMS.getKey(clickedStack.getItem());
                     LOGGER.debug("  Registry name: {}", registryName);
                     if (registryName != null) {
                         String nameStr = registryName.toString();
                         if (!this.currentConfigEntries.contains(nameStr)) {
                             LOGGER.debug("  Adding registry name to config: {}", nameStr);
                             this.currentConfigEntries.add(nameStr);
-                            saveConfigEntries(); // Save and refresh display
-                            // We don't return true here as slotClicked is void
+                            saveConfigEntries();
                         } else {
                             LOGGER.debug("  Registry name already in config.");
                         }
                     } else {
                         LOGGER.warn("  Could not get registry name for item: {}", clickedStack);
                     }
+                    // DO NOT call super.slotClicked - we handled it.
+                } else {
+                    // Unhandled button in player inventory, maybe let default handle? Or block? Let's block for now.
+                    LOGGER.debug("  Unhandled mouse button {} in player inventory slot.", mouseButton);
                 }
             } else {
-                LOGGER.debug("  Clicked stack is empty.");
+                 LOGGER.debug("  Clicked empty player inventory slot.");
+                 // Clicking empty slot, do nothing, don't call super.
             }
-            // Even though we handled it, we don't call super.slotClicked()
-            return; // Handled player inventory click
         }
-
-        // Check if click is within the config display area (use container's inventory reference)
-        // Note: We compare the container instance directly.
-        boolean isConfigInv = slotIn.container == this.menu.getConfigDisplayInventory();
-        LOGGER.debug("  Is click in config display inventory? {}", isConfigInv);
-
-        if (isConfigInv) {
+        // Check if click is within the config display area
+        else if (slot.container == this.getMenu().getConfigDisplayInventory()) {
             LOGGER.debug("  Click in config display area.");
-            // slotIn.getSlotIndex() should give the index within *its* container (0-53 for display)
-            int displaySlotIndex = slotIn.getSlotIndex();
+            int displaySlotIndex = slot.getSlotIndex();
             int configIndex = (currentPage * ConfigItemListContainer.CONFIG_SLOT_COUNT) + displaySlotIndex;
             LOGGER.debug("  Display slot index: {}, Calculated config index: {}", displaySlotIndex, configIndex);
 
-            if (configIndex >= 0 && configIndex < this.currentConfigEntries.size()) {
-                // Any click (left/right) on a config item removes it
+            // Only handle left-click (mouseButton 0) for removal
+            if (mouseButton == 0 && configIndex >= 0 && configIndex < this.currentConfigEntries.size()) {
                 String removedEntry = this.currentConfigEntries.remove(configIndex);
                 LOGGER.debug("  Removing entry at config index {}: {}", configIndex, removedEntry);
-                saveConfigEntries(); // Save and refresh display
+                saveConfigEntries();
+            } else if (mouseButton != 0) {
+                 LOGGER.debug("  Ignoring non-left click in config display area.");
             } else {
                 LOGGER.debug("  Calculated config index is out of bounds or list is empty.");
             }
-            // Even though we handled it, we don't call super.slotClicked()
-            return; // Handled config inventory click
+            // DO NOT call super.slotClicked - we handled it (or ignored it intentionally).
         }
-
-        // If the click was on a slot but not player inv or config inv (shouldn't happen here)
-        LOGGER.warn("  Click in unknown slot type: container={}, slotIndex={}", slotIn.container.getClass().getName(), slotIn.index);
-        // Do not call super.slotClicked()
+        // Click was on some other slot type (shouldn't happen) or was PICKUP but we didn't handle the button
+        else {
+             LOGGER.warn("  Click in unknown slot type or unhandled button/type: container={}, slotIndex={}, button={}, type={}",
+                 slot.container.getClass().getName(), slot.index, mouseButton, type);
+             // Let's call super in this unexpected case, maybe it's needed for something else.
+             super.slotClicked(slot, slotId, mouseButton, type);
+        }
+        // IMPORTANT: If we handled the PICKUP click (added/removed/ignored intentionally), we DO NOT call super.slotClicked().
+        // This prevents the problematic vanilla logic from executing with the wrong container context.
     }
 
-    // Ensure config is reloaded if screen is reopened
-    @Override
-    public void tick() {
-        super.tick();
-        // Tick the search box (handles cursor blinking etc.)
-        if (this.searchBox != null) {
-            this.searchBox.tick();
-        }
-        // Optional: Could add a check here to see if the underlying config file changed
-        // and force a reload, but manual refresh on add/remove is usually sufficient.
-    }
+    // REMOVED tick() method override as it's final in superclass
 
     // Make sure text box gets events when screen closes
     @Override
@@ -510,12 +463,25 @@ public class ConfigItemListScreen extends ContainerScreen<ConfigItemListContaine
         this.minecraft.keyboardHandler.setSendRepeatsToGui(false);
     }
 
-    // Allow text box to handle keyboard input
+    // Allow text box to handle keyboard input, but ensure Escape always closes
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (this.searchBox.keyPressed(keyCode, scanCode, modifiers) || this.searchBox.canConsumeInput()) {
-            return true; // Input handled by search box
+        // Prioritize Escape key (256) to close the screen
+        if (keyCode == 256) { // GLFW.GLFW_KEY_ESCAPE
+            // Let the default screen handling close the GUI
+            return super.keyPressed(keyCode, scanCode, modifiers);
         }
-        return super.keyPressed(keyCode, scanCode, modifiers); // Let container handle other keys
+
+        // If not Escape, let the search box try to handle other keys
+        if (this.searchBox.keyPressed(keyCode, scanCode, modifiers) || this.searchBox.canConsumeInput()) {
+            // Check again if it was Escape, in case the search box consumed it but shouldn't prevent closing
+            if (keyCode == 256) {
+                 return super.keyPressed(keyCode, scanCode, modifiers); // Still ensure close
+            }
+            return true; // Input handled by search box (and wasn't Escape)
+        }
+
+        // Otherwise, let the default handling occur for other keys
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 }

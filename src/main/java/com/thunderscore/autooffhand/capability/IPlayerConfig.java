@@ -2,13 +2,13 @@ package com.thunderscore.autooffhand.capability;
 
 import java.util.List;
 
-import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraftforge.common.util.INBTSerializable;
 
 /**
  * Capability interface for storing per-player AutoOffhand configuration.
  */
-public interface IPlayerConfig extends INBTSerializable<CompoundNBT> {
+public interface IPlayerConfig extends INBTSerializable<CompoundTag> {
 
     /**
      * Gets the player's specific list of items/rules for auto offhand.

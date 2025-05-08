@@ -9,10 +9,10 @@ import org.apache.logging.log4j.Logger;
 
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.JsonToNBT;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.TagParser;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.registries.ForgeRegistries;
 
 public final class ConfigItemUtils {
@@ -40,8 +40,8 @@ public final class ConfigItemUtils {
             return false;
         }
 
-        CompoundNBT nbt1 = stack1.hasTag() ? stack1.getTag().copy() : null;
-        CompoundNBT nbt2 = stack2.hasTag() ? stack2.getTag().copy() : null;
+        CompoundTag nbt1 = stack1.hasTag() ? stack1.getTag().copy() : null;
+        CompoundTag nbt2 = stack2.hasTag() ? stack2.getTag().copy() : null;
 
         if (nbt1 != null) {
             nbt1.remove(DAMAGE_NBT_KEY);
@@ -67,11 +67,11 @@ public final class ConfigItemUtils {
      * @return The NBT string representation, or null if the stack is empty.
      */
     @Nullable
-    public static String serializeItemStack(ItemStack stack) {
+    public static String serializeItemStack(ItemStack stack) { // Updated ItemStack import
         if (stack.isEmpty()) {
             return null;
         }
-        CompoundNBT nbt = stack.save(new CompoundNBT());
+        CompoundTag nbt = stack.save(new CompoundTag());
         nbt.remove(DAMAGE_NBT_KEY); // Remove damage/durability
         return nbt.toString();
     }
@@ -92,9 +92,9 @@ public final class ConfigItemUtils {
 
         if (entry.startsWith("{")) {
             try {
-                CompoundNBT nbt = JsonToNBT.parseTag(entry);
+                CompoundTag nbt = TagParser.parseTag(entry);
                 // Ensure the NBT represents a valid item stack structure
-                if (nbt.contains("id", 8) && nbt.contains("Count", 99)) {
+                if (nbt.contains("id", 8) && nbt.contains("Count", 99)) { // 8=String, 99=Number
                     ItemStack stack = ItemStack.of(nbt);
                     if (!stack.isEmpty()) {
                         // Remove damage tag for consistent matching if present in config string

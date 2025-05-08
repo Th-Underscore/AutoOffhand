@@ -20,8 +20,8 @@ modId="autooffhand" #mandatory
 version="${mod_version}" #mandatory
 # A display name for the mod
 displayName="Auto Offhand" #mandatory
-# How to handle the mod presence on the client/server side mismatch.
-displayTest="IGNORE_SERVER_ONLY" #optional
+# How to handle the mod presence on client/server side mismatch.
+displayTest="IGNORE_SERVER_VERSION" #optional
 # A URL to query for updates for this mod. See the JSON update specification https://docs.minecraftforge.net/en/latest/misc/updatechecker/
 #updateJSONURL="https://change.me.example.invalid/updates.json" #optional
 # A URL for the "homepage" for this mod, displayed in the mod UI

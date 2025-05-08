@@ -5,10 +5,10 @@ import java.util.List;
 
 import com.thunderscore.autooffhand.AutoOffhand;
 
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.nbt.ListNBT;
-import net.minecraft.nbt.StringNBT;
-import net.minecraftforge.common.util.Constants;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 
 /**
  * Default implementation of the IPlayerConfig capability.
@@ -20,7 +20,7 @@ public class PlayerConfig implements IPlayerConfig {
     private boolean useServerConfig = false;
 
     private static final String NBT_KEY_CONFIG_LIST = "AutoOffhandConfigList";
-    private static final String NBT_KEY_USE_SERVER_CONFIG = "AutoOffhandUseServerConfig"; // NBT key for the toggle
+    private static final String NBT_KEY_USE_SERVER_CONFIG = "AutoOffhandUseServerConfig";
 
     @Override
     public List<String> getConfigList() {
@@ -47,23 +47,23 @@ public class PlayerConfig implements IPlayerConfig {
     }
 
     @Override
-    public CompoundNBT serializeNBT() {
-        CompoundNBT nbt = new CompoundNBT();
-        ListNBT listNBT = new ListNBT();
+    public CompoundTag serializeNBT() {
+        CompoundTag nbt = new CompoundTag();
+        ListTag listNBT = new ListTag();
         for (String entry : this.configList) {
-            listNBT.add(StringNBT.valueOf(entry));
+            listNBT.add(StringTag.valueOf(entry));
         }
         nbt.put(NBT_KEY_CONFIG_LIST, listNBT);
-        nbt.putBoolean(NBT_KEY_USE_SERVER_CONFIG, this.useServerConfig); // Save the boolean flag
+        nbt.putBoolean(NBT_KEY_USE_SERVER_CONFIG, this.useServerConfig);
         AutoOffhand.LOGGER.debug("Serializing PlayerConfig capability: {}", nbt);
         return nbt;
     }
 
     @Override
-    public void deserializeNBT(CompoundNBT nbt) {
+    public void deserializeNBT(CompoundTag nbt) {
         List<String> loadedList = new ArrayList<>();
-        if (nbt.contains(NBT_KEY_CONFIG_LIST, Constants.NBT.TAG_LIST)) {
-            ListNBT listNBT = nbt.getList(NBT_KEY_CONFIG_LIST, Constants.NBT.TAG_STRING);
+        if (nbt.contains(NBT_KEY_CONFIG_LIST, Tag.TAG_LIST)) {
+            ListTag listNBT = nbt.getList(NBT_KEY_CONFIG_LIST, Tag.TAG_STRING);
             for (int i = 0; i < listNBT.size(); i++) {
                 loadedList.add(listNBT.getString(i));
             }

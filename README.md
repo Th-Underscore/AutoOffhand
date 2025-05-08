@@ -2,7 +2,7 @@
 
 ## Description
 
-AutoOffhand is a server-side Minecraft Forge mod for Minecraft 1.16.5, designed to automatically manage your offhand slot. It moves specific items directly into your offhand when you pick them up, provided the slot is empty. It also intelligently handles returning projectiles like Loyalty Tridents, placing them back into your offhand if configured.
+AutoOffhand is a server-side Minecraft Forge mod for Minecraft [1.16.5](https://github.com/Th-Underscore/AutoOffhand/releases/tag/v0.0.1) and [1.18.2](https://github.com/Th-Underscore/AutoOffhand/releases/tag/v0.0.2), designed to automatically manage your offhand slot. It moves specific items directly into your offhand when you pick them up, provided the slot is empty. It also intelligently handles returning projectiles like Loyalty Tridents, placing them back into your offhand if configured.
 
 ## Features
 
@@ -24,6 +24,11 @@ AutoOffhand is a server-side Minecraft Forge mod for Minecraft 1.16.5, designed 
     *   Press the **O** key (by default) in-game to open the configuration GUI.
     *   Add or remove item registry names (right-click) or specific item NBT strings (left-click) to customize your personal list.
     *   Use the `/autooffhand toggle` command to switch between using the server's global config list and your own.
+
+## Compatibility
+
+*   Tetra's Modular Items (https://www.curseforge.com/minecraft/mc-mods/tetra)
+*   If you want me to add more, please let me know!
 
 ## Building
 

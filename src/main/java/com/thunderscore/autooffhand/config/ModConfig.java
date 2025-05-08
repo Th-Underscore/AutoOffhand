@@ -10,8 +10,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
-import net.minecraft.nbt.JsonToNBT;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.nbt.TagParser;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.registries.ForgeRegistries;
 
@@ -19,12 +19,12 @@ public class ModConfig {
     // Add a logger for this class
     private static final Logger LOGGER = LogManager.getLogger();
 
-    // Changed from COMMON to SERVER
+   
     public static final ServerConfig SERVER;
     public static final ForgeConfigSpec SERVER_SPEC;
 
     static {
-        // Changed from CommonConfig to ServerConfig
+       
         final Pair<ServerConfig, ForgeConfigSpec> specPair = new ForgeConfigSpec.Builder().configure(ServerConfig::new);
         SERVER_SPEC = specPair.getRight();
         SERVER = specPair.getLeft();
@@ -55,7 +55,7 @@ public class ModConfig {
                                 if (str.startsWith("{")) {
                                     // Check if it's potentially valid NBT
                                     try {
-                                        JsonToNBT.parseTag(str); // Try parsing
+                                        TagParser.parseTag(str);
                                         return true;
                                     } catch (CommandSyntaxException e) {
                                         // Invalid NBT syntax

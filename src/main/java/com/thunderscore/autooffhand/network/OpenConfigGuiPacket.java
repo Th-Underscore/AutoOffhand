@@ -9,8 +9,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.thunderscore.autooffhand.ClientSetup;
 
-import net.minecraft.network.PacketBuffer;
-import net.minecraftforge.fml.network.NetworkEvent;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraftforge.network.NetworkEvent;
 
 /**
  * Packet sent from Server -> Client to request opening the config GUI.
@@ -29,7 +29,7 @@ public class OpenConfigGuiPacket {
     }
 
     // Constructor used by Forge for decoding
-    private OpenConfigGuiPacket(PacketBuffer buf) {
+    private OpenConfigGuiPacket(FriendlyByteBuf buf) {
         this.isServerConfig = buf.readBoolean();
         int size = buf.readVarInt();
         this.configEntries = new ArrayList<>(size);
@@ -41,16 +41,15 @@ public class OpenConfigGuiPacket {
 
     // --- Encoding and Decoding ---
 
-    public static void encode(OpenConfigGuiPacket msg, PacketBuffer buf) {
+    public static void encode(OpenConfigGuiPacket msg, FriendlyByteBuf buf) {
         buf.writeBoolean(msg.isServerConfig);
         buf.writeVarInt(msg.configEntries.size());
         for (String entry : msg.configEntries) {
-            buf.writeUtf(entry); // Write each string
+            buf.writeUtf(entry);
         }
     }
 
-    public static OpenConfigGuiPacket decode(PacketBuffer buf) {
-        // Decode using the PacketBuffer constructor
+    public static OpenConfigGuiPacket decode(FriendlyByteBuf buf) {
         return new OpenConfigGuiPacket(buf);
     }
 
@@ -58,11 +57,10 @@ public class OpenConfigGuiPacket {
 
     public static void handle(OpenConfigGuiPacket msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
-            LOGGER.debug("Received OpenConfigGuiPacket on client (isServerConfig={}) with {} entries: {}",
+            LOGGER.info("Received OpenConfigGuiPacket on client (isServerConfig={}) with {} entries: {}",
                         msg.isServerConfig,
                         msg.configEntries != null ? msg.configEntries.size() : "null",
                         msg.configEntries);
-            // Pass the received list and flag to the screen opening method
             ClientSetup.openConfigScreen(msg.configEntries, msg.isServerConfig);
         });
         ctx.get().setPacketHandled(true);
